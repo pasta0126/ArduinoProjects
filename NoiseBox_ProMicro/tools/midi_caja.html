@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Monitor MIDI con caja</title>
+<style>
+:root{--bg:#0f1214;--panel:#171b1e;--ink:#e8ecef;--mut:#8d979f;--line:#2a3136;--acc:#ff8a5b;--ok:#5bd68a}
+@media (prefers-color-scheme: light){:root{--bg:#f6f7f8;--panel:#fff;--ink:#16181b;--mut:#5c646b;--line:#d5d9dc;--acc:#d9480f;--ok:#1b8a4a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:20px max(16px,env(safe-area-inset-left))}
+main{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{margin:0;font-size:24px}.sub{color:var(--mut);margin:2px 0 0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+button{font:inherit;font-weight:600;padding:9px 16px;border-radius:6px;border:1.5px solid var(--ink);background:var(--ink);color:var(--bg);cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+select{font:inherit;padding:8px;border-radius:6px;background:var(--panel);color:var(--ink);border:1.5px solid var(--line)}
+#status{color:var(--mut)}#status.ok{color:var(--ok)}#status.err{color:var(--acc)}
+.big{font:700 54px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;line-height:1}
+.lab{color:var(--mut);font-size:13px}
+.meter{height:14px;background:var(--line);border-radius:3px;overflow:hidden}
+#bar{height:100%;width:0;background:var(--acc);transition:width .05s}
+#log{display:flex;flex-direction:column;gap:4px;max-height:260px;overflow:auto;font:13px ui-monospace,Menlo,monospace}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mut);min-width:200px}
+input[type=range]{accent-color:var(--acc);width:100%}
+</style></head><body><main>
+<header><h1>Monitor MIDI con caja</h1>
+<p class="sub">Recibe las notas MIDI de la Pro Micro y suena una caja. Usa Chrome y el sketch <code>02_midi_golpe</code>.</p></header>
+<div class="panel row"><button id="go">Activar MIDI y sonido</button><label>Entrada MIDI<select id="dev"><option>(pulsa Activar)</option></select></label><span id="status">Sin conectar</span></div>
+<div class="panel row">
+<div><div class="big" id="vel">0</div><div class="lab">velocity del último golpe (1–127)</div></div>
+<div style="flex:1;min-width:200px"><div class="meter"><div id="bar"></div></div><div class="lab" style="margin-top:6px">notas recibidas: <b id="cnt">0</b> · acorde: <b id="chordname">-</b> · última nota: <b id="note">-</b> · canal: <b id="ch">-</b></div></div>
+</div>
+<div class="panel row"><label>Volumen: <b id="vov">80</b> %<input id="vo" type="range" min="0" max="100" value="80"></label>
+<label>Sonido<select id="snd"><option value="guitar" selected>Guitarra (acorde)</option><option value="snare">Caja</option><option value="kick">Bombo</option><option value="hat">Hi-hat</option></select></label>
+<label>Acorde<select id="chord"><option value="prog" selected>Progresión Am · F · C · G</option><option value="Am">Am</option><option value="C">C</option><option value="G">G</option><option value="D">D</option><option value="Em">Em</option><option value="F">F</option></select></label>
+<button id="test" style="background:transparent;color:var(--ink)">Probar sonido</button></div>
+<div class="panel"><div id="log"><span style="color:var(--mut)">Aún no hay mensajes.</span></div></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);let ac=null,master=null,noiseBuf=null,cnt=0;
+function audioInit(){
+  ac=new (window.AudioContext||window.webkitAudioContext)();master=ac.createGain();master.gain.value=.8;master.connect(ac.destination);
+  noiseBuf=ac.createBuffer(1,ac.sampleRate,ac.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+}
+function noise(t,hp,dur,g){const n=ac.createBufferSource();n.buffer=noiseBuf;const f=ac.createBiquadFilter();f.type='highpass';f.frequency.value=hp;
+  const e=ac.createGain();e.gain.setValueAtTime(g,t);e.gain.exponentialRampToValueAtTime(.001,t+dur);n.connect(f);f.connect(e);e.connect(master);n.start(t);n.stop(t+dur+.05)}
+function tone(t,f0,f1,dur,g,type){const o=ac.createOscillator();o.type=type||'triangle';o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(f1,t+dur);
+  const e=ac.createGain();e.gain.setValueAtTime(g,t);e.gain.exponentialRampToValueAtTime(.001,t+dur);o.connect(e);e.connect(master);o.start(t);o.stop(t+dur+.05)}
+// ---- guitarra: cuerda pulsada (Karplus-Strong) y rasgueo de acordes ----
+const CHORDS={Am:[45,52,57,60,64],C:[48,52,55,60,64],G:[43,47,50,55,59,67],D:[50,57,62,66],Em:[40,47,52,55,59,64],F:[41,48,53,57,60,65]};
+const PROG=['Am','F','C','G'];let progIdx=0,strumDown=true;const strCache={};
+function string(note){
+  if(strCache[note])return strCache[note];
+  const sr=ac.sampleRate,f=440*Math.pow(2,(note-69)/12),N=Math.round(sr/f),len=Math.round(sr*2.2);
+  const y=new Float32Array(len);
+  let prev=0;for(let i=0;i<N;i++){const r=Math.random()*2-1;prev=.6*prev+.4*r;y[i]=prev}   // ruido suavizado = cuerda recién pulsada
+  for(let i=N;i<len;i++)y[i]=.4985*(y[i-N]+y[i-N+1]);                                        // la media de dos muestras apaga el brillo poco a poco
+  let mx=0;for(let i=0;i<len;i++)mx=Math.max(mx,Math.abs(y[i]));for(let i=0;i<len;i++)y[i]/=mx;
+  const b=ac.createBuffer(1,len,sr);b.copyToChannel(y,0);return strCache[note]=b;
+}
+function hitGuitar(vel){
+  const sel=$('chord').value;let name=sel;
+  if(sel==='prog'){name=PROG[progIdx%PROG.length];progIdx++}
+  $('chordname').textContent=name;
+  const notes=CHORDS[name].slice();if(!strumDown)notes.reverse();strumDown=!strumDown;      // abajo y arriba alternados
+  const t=ac.currentTime,g=Math.pow(vel/127,1.2),gap=.05-.036*(vel/127);                    // más fuerte = rasgueo más rápido
+  notes.forEach((n,i)=>{
+    const s=ac.createBufferSource();s.buffer=string(n);
+    const e=ac.createGain();e.gain.value=g*.55/Math.sqrt(notes.length)*(1-.05*i);
+    s.connect(e);e.connect(master);s.start(t+i*gap);
+  });
+}
+// ---- acordes que llegan como varias notas MIDI (sketch 03): cada nota = una cuerda ----
+let winNotes=[],winT=null;
+function chordName(ns){
+  const pcs=[...new Set(ns)].sort((a,b)=>a-b).join();
+  for(const k in CHORDS){if([...new Set(CHORDS[k])].sort((a,b)=>a-b).join()===pcs)return k}
+  return ns.join(' ');
+}
+function chordNote(n,v){
+  if(!ac)return;
+  const first=winNotes.length===0;winNotes.push(n);
+  if(first){cnt++;$('cnt').textContent=cnt;$('vel').textContent=v;$('bar').style.width=(v/127*100)+'%'}
+  if($('snd').value==='guitar'){
+    const s=ac.createBufferSource();s.buffer=string(n);
+    const e=ac.createGain();e.gain.value=Math.pow(v/127,1.2)*.3;s.connect(e);e.connect(master);s.start();
+  }else if(first){hit(v)}
+  clearTimeout(winT);winT=setTimeout(()=>{$('chordname').textContent=chordName(winNotes);winNotes=[]},150);
+}
+function hit(vel){
+  if(!ac)return;const t=ac.currentTime,g=Math.pow(vel/127,1.4),k=$('snd').value;
+  if(k==='guitar'){hitGuitar(vel);return}
+  if(k==='snare'){noise(t,1500,.2,.8*g);tone(t,220,120,.12,.7*g)}
+  else if(k==='kick'){tone(t,150,45,.3,1.0*g,'sine')}
+  else{noise(t,7000,.06,.6*g)}
+}
+function onMsg(e){
+  const [st,n,v]=e.data,cmd=st&0xF0,ch=(st&0x0F)+1;
+  if(cmd===0x90&&v>0){
+    $('note').textContent=n;$('ch').textContent=ch;
+    if(n===38){cnt++;$('cnt').textContent=cnt;$('vel').textContent=v;$('bar').style.width=(v/127*100)+'%';hit(v)}   // sketch 02: una nota por golpe
+    else chordNote(n,v);                                                                                              // sketch 03: varias notas = acorde
+    log(`nota ON  nota=${n} velocity=${v} canal=${ch}`)}
+  else if(cmd===0x80||(cmd===0x90&&v===0)){log(`nota OFF nota=${n} canal=${ch}`)}
+}
+function log(s){const b=$('log');if(b.firstElementChild&&b.firstElementChild.tagName==='SPAN')b.innerHTML='';const d=document.createElement('div');d.textContent=s;b.prepend(d);while(b.children.length>60)b.lastChild.remove()}
+let midi=null;
+function bind(){
+  for(const i of midi.inputs.values())i.onmidimessage=null;
+  const id=$('dev').value;const inp=midi.inputs.get(id);if(inp){inp.onmidimessage=onMsg;$('status').textContent='Escuchando: '+inp.name;$('status').className='ok'}
+}
+function fill(){
+  const sel=$('dev');sel.innerHTML='';
+  for(const i of midi.inputs.values()){const o=document.createElement('option');o.value=i.id;o.textContent=i.name;sel.appendChild(o);
+    if(/arduino|micro|leonardo/i.test(i.name))sel.value=i.id}
+  if(!sel.options.length){const o=document.createElement('option');o.textContent='(ninguna entrada MIDI)';sel.appendChild(o);$('status').textContent='No se ve ninguna entrada MIDI. ¿Está subido el sketch 02?';$('status').className='err'}
+  else bind();
+}
+$('go').onclick=async()=>{
+  if(!ac)audioInit();if(ac.state==='suspended')ac.resume();
+  if(!navigator.requestMIDIAccess){$('status').textContent='Este navegador no soporta Web MIDI. Usa Chrome.';$('status').className='err';return}
+  try{midi=await navigator.requestMIDIAccess();midi.onstatechange=fill;fill()}
+  catch(e){$('status').textContent='No se pudo acceder al MIDI: '+e.message;$('status').className='err'}
+};
+$('dev').onchange=bind;
+$('vo').oninput=e=>{$('vov').textContent=e.target.value;if(master)master.gain.value=e.target.value/100};
+$('test').onclick=()=>{if(!ac)audioInit();if(ac.state==='suspended')ac.resume();hit(100)};
+</script></body></html>
