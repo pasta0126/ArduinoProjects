@@ -27,7 +27,7 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 </style></head><body><main>
 <header><h1>Osciloscopio del piezo</h1>
 <p class="sub">Lee la Pro Micro por USB. Ejecuta el sketch <code>01_piezo_plotter</code> y usa Chrome. Cierra otros programas que usen el puerto.</p></header>
-<div class="row"><button id="btn">Conectar placa</button><button id="clr" class="sec">Borrar golpes</button><span id="msg"></span></div>
+<div class="row"><button id="btn">Conectar placa</button><button id="clr" class="sec">Borrar golpes</button><button id="snd" class="sec">Activar sonido</button><span id="msg"></span></div>
 <div class="panel"><canvas id="cv"></canvas></div>
 <div class="stats">
 <div class="panel stat"><b id="now">0</b><span>valor actual (0–1023)</span></div>
@@ -38,25 +38,31 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 <div class="panel row">
 <label>Umbral de disparo: <b id="thv">25</b><input id="th" type="range" min="5" max="300" value="25"></label>
 <label>Tiempo muerto: <b id="lov">50</b> ms<input id="lo" type="range" min="10" max="300" value="50"></label>
+<label>Volumen: <b id="vov">70</b> %<input id="vo" type="range" min="0" max="100" value="70"></label>
 </div>
 <div class="panel"><div id="hits"><span style="color:var(--mut)">Aún no hay golpes. Conecta la placa y toca el piezo.</span></div></div>
 </main>
 <script>
 const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
 const N=1500,buf=new Float32Array(N);let head=0;
-let thr=25,lock=50,lastHit=0,inHit=false,pk=0,cnt=0,cur=0,port=null;
+let thr=25,lock=50,lastHit=0,inHit=false,fired=false,tHit=0,pk=0,cnt=0,cur=0,port=null,ac=null,master=null,bus=null,noiseBuf=null,soundOn=false;
 const $=id=>document.getElementById(id);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function vel(p){return Math.max(1,Math.min(127,Math.round(p/1023*127*3)))}  // x3: golpes normales llenan el rango
 function onSample(v){
   cur=v;buf[head]=v;head=(head+1)%N;
   const now=performance.now();
-  if(!inHit&&v>=thr&&now-lastHit>lock){inHit=true;pk=v}
-  else if(inHit){ if(v>pk)pk=v; if(v<thr/2){inHit=false;lastHit=now;addHit(pk)} }
+  if(!inHit){ if(v>=thr&&now-lastHit>lock){inHit=true;fired=false;pk=v;tHit=now} }
+  else{
+    if(v>pk)pk=v;
+    if(!fired&&now-tHit>=8){fired=true;addHit(pk)}   // dispara 8 ms después: ya se conoce la fuerza
+    if(v<thr/2){inHit=false;lastHit=now}              // se rearma cuando la señal baja
+  }
 }
 function addHit(p){
   cnt++;const vv=vel(p);
   $('peak').textContent=p;$('vel').textContent=vv;$('cnt').textContent=cnt;
+  if(soundOn)boing(vv);
   const box=$('hits');if(box.firstElementChild&&!box.firstElementChild.classList.contains('hit'))box.innerHTML='';
   const d=document.createElement('div');d.className='hit';
   d.innerHTML=`<span>#${cnt}</span><span>pico ${p}</span><span class="bar" style="width:${Math.max(2,vv/127*100)}%"></span>`;
@@ -76,6 +82,35 @@ function draw(){
   ctx.stroke();$('now').textContent=cur;requestAnimationFrame(draw);
 }
 requestAnimationFrame(draw);
+// ---- sonido: un "boing" de muelle disparado por cada golpe (más fuerte = más fuerte y más brillante) ----
+function audioInit(){
+  ac=new (window.AudioContext||window.webkitAudioContext)();
+  master=ac.createGain();master.gain.value=.7;master.connect(ac.destination);
+  bus=ac.createGain();bus.connect(master);
+  const dl=ac.createDelay(.2),fb=ac.createGain();dl.delayTime.value=.031;fb.gain.value=.5;   // eco corto = cuerpo de muelle
+  bus.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(master);
+  noiseBuf=ac.createBuffer(1,ac.sampleRate,ac.sampleRate);
+  const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+}
+function boing(vel){
+  if(!ac)return;const t=ac.currentTime,g=vel/127;
+  const n=ac.createBufferSource();n.buffer=noiseBuf;
+  const bp=ac.createBiquadFilter();bp.type='bandpass';bp.frequency.value=900+g*3500;bp.Q.value=5;
+  const ne=ac.createGain();ne.gain.setValueAtTime(0,t);ne.gain.linearRampToValueAtTime(.5*g,t+.002);ne.gain.exponentialRampToValueAtTime(.001,t+.12);
+  n.connect(bp);bp.connect(ne);ne.connect(bus);n.start(t);n.stop(t+.2);
+  const o=ac.createOscillator();o.type='triangle';
+  o.frequency.setValueAtTime(380+g*420,t);o.frequency.exponentialRampToValueAtTime(150,t+.35);
+  const oe=ac.createGain();oe.gain.setValueAtTime(0,t);oe.gain.linearRampToValueAtTime(.45*g,t+.004);oe.gain.exponentialRampToValueAtTime(.001,t+.6);
+  o.connect(oe);oe.connect(bus);o.start(t);o.stop(t+.7);
+}
+$('snd').onclick=()=>{
+  if(!ac)audioInit();
+  if(ac.state==='suspended')ac.resume();
+  soundOn=!soundOn;$('snd').textContent=soundOn?'Sonido activado':'Activar sonido';
+  $('snd').classList.toggle('sec',!soundOn);
+  if(soundOn)boing(100);   // sonido de prueba
+};
+$('vo').oninput=e=>{const v=+e.target.value;$('vov').textContent=v;if(master)master.gain.value=v/100};
 $('th').oninput=e=>{thr=+e.target.value;$('thv').textContent=thr};
 $('lo').oninput=e=>{lock=+e.target.value;$('lov').textContent=lock};
 $('clr').onclick=()=>{cnt=0;$('cnt').textContent=0;$('peak').textContent=0;$('vel').textContent=0;$('hits').innerHTML='<span style="color:var(--mut)">Lista borrada.</span>'};
