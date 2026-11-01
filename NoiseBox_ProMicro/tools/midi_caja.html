@@ -31,8 +31,11 @@ input[type=range]{accent-color:var(--acc);width:100%}
 </div>
 <div class="panel row"><label>Volumen: <b id="vov">80</b> %<input id="vo" type="range" min="0" max="100" value="80"></label>
 <label>Sonido<select id="snd"><option value="guitar" selected>Guitarra (acorde)</option><option value="snare">Caja</option><option value="kick">Bombo</option><option value="hat">Hi-hat</option></select></label>
-<label>Acorde<select id="chord"><option value="prog" selected>Progresión Am · F · C · G</option><option value="Am">Am</option><option value="C">C</option><option value="G">G</option><option value="D">D</option><option value="Em">Em</option><option value="F">F</option></select></label>
+<label>Acorde<select id="chord"><option value="prog" selected>Progresión Am · F · C · G</option><option value="Am">Am</option><option value="C">C</option><option value="G">G</option><option value="D">D</option><option value="Em">Em</option><option value="F">F</option><option value="Dm">Dm</option><option value="E">E</option></select></label>
 <button id="test" style="background:transparent;color:var(--ink)">Probar sonido</button></div>
+<div class="panel"><div class="lab" style="margin-bottom:8px">Potenciómetro: <b id="potv">-</b> · zona <b id="potz">-</b> (sale <b id="potc">-</b>)</div>
+<div id="pot" style="position:relative;height:34px;border-radius:4px;overflow:hidden;display:flex"></div>
+<div class="lab" style="margin-top:6px">El marcador blanco es el mando. Si el sketch 03 no está cargado, no se mueve.</div></div>
 <div class="panel"><div id="log"><span style="color:var(--mut)">Aún no hay mensajes.</span></div></div>
 </main>
 <script>
@@ -46,7 +49,7 @@ function noise(t,hp,dur,g){const n=ac.createBufferSource();n.buffer=noiseBuf;con
 function tone(t,f0,f1,dur,g,type){const o=ac.createOscillator();o.type=type||'triangle';o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(f1,t+dur);
   const e=ac.createGain();e.gain.setValueAtTime(g,t);e.gain.exponentialRampToValueAtTime(.001,t+dur);o.connect(e);e.connect(master);o.start(t);o.stop(t+dur+.05)}
 // ---- guitarra: cuerda pulsada (Karplus-Strong) y rasgueo de acordes ----
-const CHORDS={Am:[45,52,57,60,64],C:[48,52,55,60,64],G:[43,47,50,55,59,67],D:[50,57,62,66],Em:[40,47,52,55,59,64],F:[41,48,53,57,60,65]};
+const CHORDS={Am:[45,52,57,60,64],C:[48,52,55,60,64],G:[43,47,50,55,59,67],D:[50,57,62,66],Em:[40,47,52,55,59,64],F:[41,48,53,57,60,65],Dm:[50,57,62,65],E:[40,47,52,56,59,64]};
 const PROG=['Am','F','C','G'];let progIdx=0,strumDown=true;const strCache={};
 function string(note){
   if(strCache[note])return strCache[note];
@@ -100,9 +103,19 @@ function onMsg(e){
     if(n===38){cnt++;$('cnt').textContent=cnt;$('vel').textContent=v;$('bar').style.width=(v/127*100)+'%';hit(v)}   // sketch 02: una nota por golpe
     else chordNote(n,v);                                                                                              // sketch 03: varias notas = acorde
     log(`nota ON  nota=${n} velocity=${v} canal=${ch}`)}
+  else if(cmd===0xB0&&n===20){potPos(v)}
   else if(cmd===0x80||(cmd===0x90&&v===0)){log(`nota OFF nota=${n} canal=${ch}`)}
 }
 function log(s){const b=$('log');if(b.firstElementChild&&b.firstElementChild.tagName==='SPAN')b.innerHTML='';const d=document.createElement('div');d.textContent=s;b.prepend(d);while(b.children.length>60)b.lastChild.remove()}
+// ---- posición del potenciómetro: 6 zonas (Am C G D Em F) ----
+const ZN=['Am','C','G','D','Em','F','Dm','E'];
+(function(){const b=$('pot');ZN.forEach((n,i)=>{const z=document.createElement('div');z.style.cssText=`flex:1;display:flex;align-items:center;justify-content:center;font:600 13px ui-monospace,Menlo,monospace;color:#111;background:hsl(${i*45},75%,62%)`;z.textContent=n;b.appendChild(z)});
+  const m=document.createElement('div');m.id='mark';m.style.cssText='position:absolute;top:0;bottom:0;width:4px;left:0;background:#fff;box-shadow:0 0 0 1.5px #000;transition:left .05s';b.appendChild(m)})();
+function potPos(cc){
+  const x=cc/127,z=Math.min(7,Math.floor(x*8));      // el sketch 04 ya manda la posición del giro, con la curva del pot corregida
+  $('mark').style.left=`calc(${(x*100).toFixed(1)}% - 2px)`;
+  $('potv').textContent=Math.round(x*100)+'% del giro';$('potz').textContent=(z+1)+' de 8';$('potc').textContent=ZN[z];
+}
 let midi=null;
 function bind(){
   for(const i of midi.inputs.values())i.onmidimessage=null;

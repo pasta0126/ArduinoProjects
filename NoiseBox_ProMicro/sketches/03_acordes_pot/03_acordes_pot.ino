@@ -37,6 +37,7 @@ bool pending[6], sounding[6];
 bool strumDown = true;
 
 int chordIdx = 0;
+int lastCC = -1;                 // última posición del pot enviada (0-127)
 unsigned long lastPot = 0;
 
 void send(bool on, byte note, byte vel) {
@@ -51,6 +52,12 @@ void readPot() {
   int v = sum / 8;
   int lo = chordIdx * 1024 / 6, hi = (chordIdx + 1) * 1024 / 6;
   if (v < lo - 12 || v >= hi + 12) chordIdx = constrain(v * 6 / 1024, 0, 5);   // histéresis: evita saltos en el borde
+  int cc = v >> 3;                                   // 0-1023 -> 0-127
+  if (cc != lastCC) {                                // la página MIDI usa esto para dibujar dónde está el mando
+    midiEventPacket_t p = { 0x0B, (byte)(0xB0 | CHANNEL), 20, (byte)cc };
+    MidiUSB.sendMIDI(p); MidiUSB.flush();
+    lastCC = cc;
+  }
   analogRead(PIEZO);   // lectura de descarte tras cambiar de canal
 }
 
