@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Osciloscopio del piezo</title>
+<style>
+:root{--bg:#0f1214;--panel:#171b1e;--ink:#e8ecef;--mut:#8d979f;--line:#2a3136;--acc:#ff8a5b;--ok:#5bd68a;--grid:#22292e}
+@media (prefers-color-scheme: light){:root{--bg:#f6f7f8;--panel:#fff;--ink:#16181b;--mut:#5c646b;--line:#d5d9dc;--acc:#d9480f;--ok:#1b8a4a;--grid:#e6e9eb}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:20px max(16px,env(safe-area-inset-left))}
+main{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{margin:0;font-size:24px}
+.sub{color:var(--mut);margin:2px 0 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+button{font:inherit;font-weight:600;padding:9px 16px;border-radius:6px;border:1.5px solid var(--ink);background:var(--ink);color:var(--bg);cursor:pointer}
+button.sec{background:transparent;color:var(--ink)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}
+canvas{display:block;width:100%;height:340px;border-radius:4px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat b{display:block;font:600 28px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.stat span{color:var(--mut);font-size:13px}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mut);min-width:200px}
+input[type=range]{width:100%;accent-color:var(--acc)}
+#msg{color:var(--acc);min-height:1.4em}
+#hits{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto;font:13px ui-monospace,Menlo,monospace}
+.hit{display:grid;grid-template-columns:70px 70px 1fr;gap:10px;align-items:center}
+.bar{height:10px;border-radius:2px;background:var(--acc)}
+</style></head><body><main>
+<header><h1>Osciloscopio del piezo</h1>
+<p class="sub">Lee la Pro Micro por USB. Ejecuta el sketch <code>01_piezo_plotter</code> y usa Chrome. Cierra otros programas que usen el puerto.</p></header>
+<div class="row"><button id="btn">Conectar placa</button><button id="clr" class="sec">Borrar golpes</button><span id="msg"></span></div>
+<div class="panel"><canvas id="cv"></canvas></div>
+<div class="stats">
+<div class="panel stat"><b id="now">0</b><span>valor actual (0–1023)</span></div>
+<div class="panel stat"><b id="peak">0</b><span>pico del último golpe</span></div>
+<div class="panel stat"><b id="vel">0</b><span>velocity MIDI (1–127)</span></div>
+<div class="panel stat"><b id="cnt">0</b><span>golpes contados</span></div>
+</div>
+<div class="panel row">
+<label>Umbral de disparo: <b id="thv">25</b><input id="th" type="range" min="5" max="300" value="25"></label>
+<label>Tiempo muerto: <b id="lov">50</b> ms<input id="lo" type="range" min="10" max="300" value="50"></label>
+</div>
+<div class="panel"><div id="hits"><span style="color:var(--mut)">Aún no hay golpes. Conecta la placa y toca el piezo.</span></div></div>
+</main>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const N=1500,buf=new Float32Array(N);let head=0;
+let thr=25,lock=50,lastHit=0,inHit=false,pk=0,cnt=0,cur=0,port=null;
+const $=id=>document.getElementById(id);
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function vel(p){return Math.max(1,Math.min(127,Math.round(p/1023*127*3)))}  // x3: golpes normales llenan el rango
+function onSample(v){
+  cur=v;buf[head]=v;head=(head+1)%N;
+  const now=performance.now();
+  if(!inHit&&v>=thr&&now-lastHit>lock){inHit=true;pk=v}
+  else if(inHit){ if(v>pk)pk=v; if(v<thr/2){inHit=false;lastHit=now;addHit(pk)} }
+}
+function addHit(p){
+  cnt++;const vv=vel(p);
+  $('peak').textContent=p;$('vel').textContent=vv;$('cnt').textContent=cnt;
+  const box=$('hits');if(box.firstElementChild&&!box.firstElementChild.classList.contains('hit'))box.innerHTML='';
+  const d=document.createElement('div');d.className='hit';
+  d.innerHTML=`<span>#${cnt}</span><span>pico ${p}</span><span class="bar" style="width:${Math.max(2,vv/127*100)}%"></span>`;
+  box.prepend(d);while(box.children.length>40)box.lastChild.remove();
+}
+function draw(){
+  const r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1;
+  if(cv.width!==Math.round(r.width*dpr)){cv.width=Math.round(r.width*dpr);cv.height=Math.round(r.height*dpr)}
+  const W=cv.width,Hh=cv.height;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,W,Hh);
+  const maxV=1023,y=v=>Hh-6*dpr-(v/maxV)*(Hh-12*dpr);
+  ctx.lineWidth=1;ctx.strokeStyle=css('--grid');ctx.fillStyle=css('--mut');ctx.font=`${11*dpr}px ui-monospace,Menlo,monospace`;
+  for(const g of [0,256,512,768,1023]){ctx.beginPath();ctx.moveTo(0,y(g));ctx.lineTo(W,y(g));ctx.stroke();ctx.fillText(g,4*dpr,y(g)-3*dpr)}
+  ctx.strokeStyle=css('--ok');ctx.setLineDash([6*dpr,4*dpr]);ctx.beginPath();ctx.moveTo(0,y(thr));ctx.lineTo(W,y(thr));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=css('--ok');ctx.fillText('umbral '+thr,W-80*dpr,y(thr)-4*dpr);
+  ctx.strokeStyle=css('--acc');ctx.lineWidth=1.6*dpr;ctx.beginPath();
+  for(let i=0;i<N;i++){const v=buf[(head+i)%N],x=i/(N-1)*W;i?ctx.lineTo(x,y(v)):ctx.moveTo(x,y(v))}
+  ctx.stroke();$('now').textContent=cur;requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+$('th').oninput=e=>{thr=+e.target.value;$('thv').textContent=thr};
+$('lo').oninput=e=>{lock=+e.target.value;$('lov').textContent=lock};
+$('clr').onclick=()=>{cnt=0;$('cnt').textContent=0;$('peak').textContent=0;$('vel').textContent=0;$('hits').innerHTML='<span style="color:var(--mut)">Lista borrada.</span>'};
+$('btn').onclick=async()=>{
+  $('msg').textContent='';
+  if(!('serial' in navigator)){$('msg').textContent='Este navegador no lee USB serie. Abre esta página en Chrome.';return}
+  try{
+    if(port){await port.close();port=null;$('btn').textContent='Conectar placa';return}
+    port=await navigator.serial.requestPort();await port.open({baudRate:115200});
+    $('btn').textContent='Desconectar';readLoop(port);
+  }catch(e){$('msg').textContent='No se pudo conectar: '+e.message;port=null;$('btn').textContent='Conectar placa'}
+};
+async function readLoop(p){
+  const dec=new TextDecoder();let rest='';
+  try{
+    const rd=p.readable.getReader();
+    while(true){const {value,done}=await rd.read();if(done)break;
+      rest+=dec.decode(value,{stream:true});const ls=rest.split('\n');rest=ls.pop();
+      for(const l of ls){const m=/piezo:(\d+)/.exec(l);if(m)onSample(+m[1])}}
+  }catch(e){$('msg').textContent='Conexión cerrada: '+e.message}
+  port=null;$('btn').textContent='Conectar placa';
+}
+</script></body></html>
