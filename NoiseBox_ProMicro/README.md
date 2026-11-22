@@ -10,6 +10,10 @@ que lo convierte en notas MIDI por USB. Se avanza "de menos a más": primero que
 4. Modos / elegir nota
 5. Sonido propio por el jack
 
+## Caja simple (actual)
+Manual `manuals/caja-muelle.html` (se genera con `python3 tools/gen_caja.py`) y sketch `sketches/08_caja_muelle`.
+Piezo + muelle en A0, sonido "boing" por el jack (pin 9), LED RGB reactivo en 5/6/4 (una sola 220 Ω en la común). Alimentación por USB.
+
 ## Carpetas
 - `manuals/`  manuales visuales paso a paso (HTML, se abren en el navegador)
 - `sketches/` un sketch por paso (carpeta y .ino con el mismo nombre)
