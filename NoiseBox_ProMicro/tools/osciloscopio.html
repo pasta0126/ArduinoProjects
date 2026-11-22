@@ -2,8 +2,8 @@
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Osciloscopio del piezo</title>
 <style>
-:root{--bg:#0f1214;--panel:#171b1e;--ink:#e8ecef;--mut:#8d979f;--line:#2a3136;--acc:#ff8a5b;--ok:#5bd68a;--grid:#22292e}
-@media (prefers-color-scheme: light){:root{--bg:#f6f7f8;--panel:#fff;--ink:#16181b;--mut:#5c646b;--line:#d5d9dc;--acc:#d9480f;--ok:#1b8a4a;--grid:#e6e9eb}}
+:root{--bg:#0f1214;--panel:#171b1e;--ink:#e8ecef;--mut:#8d979f;--line:#2a3136;--acc:#ff8a5b;--ok:#5bd68a;--grid:#22292e;--snd:#6cb6ff}
+@media (prefers-color-scheme: light){:root{--bg:#f6f7f8;--panel:#fff;--ink:#16181b;--mut:#5c646b;--line:#d5d9dc;--acc:#d9480f;--ok:#1b8a4a;--grid:#e6e9eb;--snd:#1f6feb}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:20px max(16px,env(safe-area-inset-left))}
 main{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
@@ -15,6 +15,9 @@ button.sec{background:transparent;color:var(--ink)}
 button:focus-visible,input:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}
 canvas{display:block;width:100%;height:340px;border-radius:4px}
+#wv{height:220px}
+.leg{display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--mut);margin-top:8px}.leg i{display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:6px}
+.wvh{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:6px}.wvh b{font-size:15px}.wvh span{color:var(--mut);font-size:13px}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
 .stat b{display:block;font:600 28px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
 .stat span{color:var(--mut);font-size:13px}
@@ -26,9 +29,15 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 .bar{height:10px;border-radius:2px;background:var(--acc)}
 </style></head><body><main>
 <header><h1>Osciloscopio del piezo</h1>
-<p class="sub">Lee la Pro Micro por USB. Ejecuta el sketch <code>01_piezo_plotter</code> y usa Chrome. Cierra otros programas que usen el puerto.</p></header>
-<div class="row"><button id="btn">Conectar placa</button><button id="clr" class="sec">Borrar golpes</button><button id="snd" class="sec">Activar sonido</button><span id="msg"></span></div>
-<div class="panel"><canvas id="cv"></canvas></div>
+<p class="sub">Lee la Pro Micro por USB. Ejecuta el sketch <code>01_piezo_plotter</code> o <code>08_caja_muelle</code> (este además suena por el jack) y usa Chrome. Cierra otros programas que usen el puerto.</p></header>
+<div class="row"><button id="btn">Conectar placa</button><button id="clr" class="sec">Borrar golpes</button><button id="snd" class="sec">Activar sonido</button><button id="pau" class="sec" title="Tecla espacio">Pausa</button><span id="msg"></span></div>
+<div class="panel"><canvas id="cv"></canvas><div class="leg"><span><i style="background:var(--acc)"></i>piezo (el muelle)</span><span><i style="background:var(--snd)"></i>volumen del sonido que sale por el jack</span></div></div>
+<div class="panel"><div class="wvh"><b>Onda del sonido</b><span id="wvi">Con el sketch 08: golpea el muelle. Foto de 33 ms, una cada 150 ms mientras suena.</span></div><canvas id="wv"></canvas></div>
+<div class="panel row">
+<label>Tiempo en pantalla: <b id="wiv">3</b> s<input id="wi" type="range" min="0" max="100" value="62"></label>
+<label>Zoom vertical: <b id="zov">1</b>×<input id="zo" type="range" min="0" max="5" step="1" value="0"></label>
+<span style="color:var(--mut);font-size:13px;max-width:34ch">Menos tiempo = la onda se estira y ves cada rebote del muelle. Pausa (o espacio) congela la imagen.</span>
+</div>
 <div class="stats">
 <div class="panel stat"><b id="now">0</b><span>valor actual (0–1023)</span></div>
 <div class="panel stat"><b id="peak">0</b><span>pico del último golpe</span></div>
@@ -44,13 +53,15 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 </main>
 <script>
 const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
-const N=1500,buf=new Float32Array(N);let head=0;
+const N=5000,buf=new Float32Array(N),sbuf=new Float32Array(N);let head=0,curSon=0,hasSon=false;
+let wave=null,wavePrev=null,noteTxt='';const NOTES=['La','Do','Re','Mi','Sol'];   // 10 s a 500 muestras/s
+const RATE=500;let win=1500,zoom=1,paused=false;
 let thr=25,lock=50,lastHit=0,inHit=false,fired=false,tHit=0,pk=0,cnt=0,cur=0,port=null,ac=null,master=null,bus=null,noiseBuf=null,soundOn=false;
 const $=id=>document.getElementById(id);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function vel(p){return Math.max(1,Math.min(127,Math.round(p/1023*127*3)))}  // x3: golpes normales llenan el rango
 function onSample(v){
-  cur=v;buf[head]=v;head=(head+1)%N;
+  cur=v;if(!paused){buf[head]=v;sbuf[head]=curSon;head=(head+1)%N}
   const now=performance.now();
   if(!inHit){ if(v>=thr&&now-lastHit>lock){inHit=true;fired=false;pk=v;tHit=now} }
   else{
@@ -72,15 +83,40 @@ function draw(){
   const r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1;
   if(cv.width!==Math.round(r.width*dpr)){cv.width=Math.round(r.width*dpr);cv.height=Math.round(r.height*dpr)}
   const W=cv.width,Hh=cv.height;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,W,Hh);
-  const maxV=1023,y=v=>Hh-6*dpr-(v/maxV)*(Hh-12*dpr);
+  const maxV=1023/zoom,y=v=>Hh-6*dpr-(Math.min(v,maxV)/maxV)*(Hh-12*dpr);
   ctx.lineWidth=1;ctx.strokeStyle=css('--grid');ctx.fillStyle=css('--mut');ctx.font=`${11*dpr}px ui-monospace,Menlo,monospace`;
-  for(const g of [0,256,512,768,1023]){ctx.beginPath();ctx.moveTo(0,y(g));ctx.lineTo(W,y(g));ctx.stroke();ctx.fillText(g,4*dpr,y(g)-3*dpr)}
+  for(const g of [0,.25,.5,.75,1].map(f=>Math.round(f*maxV))){ctx.beginPath();ctx.moveTo(0,y(g));ctx.lineTo(W,y(g));ctx.stroke();ctx.fillText(g,4*dpr,y(g)-3*dpr)}
   ctx.strokeStyle=css('--ok');ctx.setLineDash([6*dpr,4*dpr]);ctx.beginPath();ctx.moveTo(0,y(thr));ctx.lineTo(W,y(thr));ctx.stroke();ctx.setLineDash([]);
   ctx.fillStyle=css('--ok');ctx.fillText('umbral '+thr,W-80*dpr,y(thr)-4*dpr);
   ctx.strokeStyle=css('--acc');ctx.lineWidth=1.6*dpr;ctx.beginPath();
-  for(let i=0;i<N;i++){const v=buf[(head+i)%N],x=i/(N-1)*W;i?ctx.lineTo(x,y(v)):ctx.moveTo(x,y(v))}
-  ctx.stroke();$('now').textContent=cur;requestAnimationFrame(draw);
+  for(let i=0;i<win;i++){const v=buf[(head-win+i+N)%N],x=i/(win-1)*W;i?ctx.lineTo(x,y(v)):ctx.moveTo(x,y(v))}
+  ctx.fillStyle=css('--mut');ctx.fillText((win/RATE).toFixed(win<500?2:1)+' s',W-46*dpr,Hh-10*dpr);if(paused){ctx.fillStyle=css('--acc');ctx.fillText('PAUSA',W/2-20*dpr,16*dpr)}
+  ctx.stroke();
+  if(hasSon){ctx.strokeStyle=css('--snd');ctx.lineWidth=1.6*dpr;ctx.beginPath();
+    for(let i=0;i<win;i++){const v=sbuf[(head-win+i+N)%N],x=i/(win-1)*W,yy=Hh-6*dpr-(v/127)*(Hh-12*dpr);i?ctx.lineTo(x,yy):ctx.moveTo(x,yy)}
+    ctx.stroke()}
+  drawWave();
+  $('now').textContent=cur;requestAnimationFrame(draw);
 }
+const wv=$('wv'),wx=wv.getContext('2d');
+function drawWave(){
+  const r=wv.getBoundingClientRect(),dpr=devicePixelRatio||1;
+  if(wv.width!==Math.round(r.width*dpr)){wv.width=Math.round(r.width*dpr);wv.height=Math.round(r.height*dpr)}
+  const W=wv.width,Hh=wv.height,y=v=>Hh/2-((v-128)/128)*(Hh/2-8*dpr);
+  wx.setTransform(1,0,0,1,0,0);wx.clearRect(0,0,W,Hh);
+  wx.strokeStyle=css('--grid');wx.lineWidth=1;wx.beginPath();wx.moveTo(0,Hh/2);wx.lineTo(W,Hh/2);wx.stroke();
+  wx.fillStyle=css('--mut');wx.font=`${11*dpr}px ui-monospace,Menlo,monospace`;
+  for(let ms=0;ms<=32;ms+=8){const x=ms/32.8*W;wx.fillText(ms+' ms',x+3*dpr,Hh-4*dpr);wx.beginPath();wx.moveTo(x,0);wx.lineTo(x,Hh);wx.stroke()}
+  const plot=(a,col,lw)=>{wx.strokeStyle=col;wx.lineWidth=lw*dpr;wx.beginPath();for(let i=0;i<a.length;i++){const x=i/(a.length-1)*W;i?wx.lineTo(x,y(a[i])):wx.moveTo(x,y(a[i]))}wx.stroke()};
+  if(wavePrev){wx.globalAlpha=.25;plot(wavePrev,css('--snd'),1.2);wx.globalAlpha=1}
+  if(wave)plot(wave,css('--snd'),2);
+  else{wx.fillText('Aún no hay onda: conecta la placa con el sketch 08 y golpea el muelle.',10*dpr,20*dpr)}
+}
+function onWave(hex){
+  if(paused||hex.length<512)return;const a=new Uint8Array(256);for(let i=0;i<256;i++)a[i]=parseInt(hex.substr(2*i,2),16);
+  wavePrev=wave;wave=a;
+}
+function onHitLine(l){const n=/nota (\d+)/.exec(l),h=/hz (\d+)/.exec(l);if(n&&h){noteTxt=`${NOTES[+n[1]]} · ${h[1]} Hz`;$('wvi').textContent='Última nota: '+noteTxt+' (la onda clara es la foto anterior)'}}
 requestAnimationFrame(draw);
 // ---- sonido: un "boing" de muelle disparado por cada golpe (más fuerte = más fuerte y más brillante) ----
 function audioInit(){
@@ -110,6 +146,12 @@ $('snd').onclick=()=>{
   $('snd').classList.toggle('sec',!soundOn);
   if(soundOn)boing(100);   // sonido de prueba
 };
+function setWin(){const t=+$('wi').value/100;win=Math.round(RATE*0.1*Math.pow(100,t));$('wiv').textContent=(win/RATE).toFixed(win<500?2:1)}  // 0,1 s a 10 s
+$('wi').oninput=setWin;setWin();
+$('zo').oninput=e=>{zoom=2**+e.target.value;$('zov').textContent=zoom};
+function togglePause(){paused=!paused;$('pau').textContent=paused?'Seguir':'Pausa';$('pau').classList.toggle('sec',!paused)}
+$('pau').onclick=togglePause;
+addEventListener('keydown',e=>{if(e.code==='Space'&&e.target.tagName!=='BUTTON'){e.preventDefault();togglePause()}});
 $('vo').oninput=e=>{const v=+e.target.value;$('vov').textContent=v;if(master)master.gain.value=v/100};
 $('th').oninput=e=>{thr=+e.target.value;$('thv').textContent=thr};
 $('lo').oninput=e=>{lock=+e.target.value;$('lov').textContent=lock};
@@ -129,7 +171,11 @@ async function readLoop(p){
     const rd=p.readable.getReader();
     while(true){const {value,done}=await rd.read();if(done)break;
       rest+=dec.decode(value,{stream:true});const ls=rest.split('\n');rest=ls.pop();
-      for(const l of ls){const m=/piezo:(\d+)/.exec(l);if(m)onSample(+m[1])}}
+      for(const l of ls){
+        if(l.startsWith('onda:')){onWave(l.slice(5).trim());continue}
+        if(l.startsWith('golpe')){onHitLine(l);continue}
+        const so=/son:(\d+)/.exec(l);if(so){curSon=+so[1];hasSon=true}
+        const m=/piezo:(\d+)/.exec(l);if(m)onSample(+m[1])}}
   }catch(e){$('msg').textContent='Conexión cerrada: '+e.message}
   port=null;$('btn').textContent='Conectar placa';
 }
