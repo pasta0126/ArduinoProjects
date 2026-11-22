@@ -332,25 +332,181 @@ def fig_solder_steps():
     out.append('</svg>')
     return ''.join(out)
 
-def fig_tin():
-    return '''<svg viewBox="0 0 620 300" role="img" aria-label="Corte de la caja: la tapa con el muelle pegado por fuera y el piezo pegado por dentro justo debajo; en el fondo la protoboard con la Pro Micro; muesca para el USB en una pared y agujero para el jack en otra">
-<text x="20" y="24" class="stxt">CAJA VISTA DE LADO (abierta)</text>
-<rect x="60" y="180" width="400" height="90" rx="10" class="tin"/>
-<rect x="60" y="80" width="400" height="22" rx="8" class="tin"/>
-<path d="M60,102 q-30,40 0,78" class="sline" style="stroke-dasharray:4 4"/><text x="8" y="146" class="lbl">bisagra</text>
-<path d="M230,80 v-14 q8,-8 0,-14 q-8,-6 0,-14 q8,-8 0,-14 q-8,-6 0,-14" class="spring"/>
-<text x="250" y="30" class="stxt">muelle pegado por fuera</text>
-<circle cx="230" cy="108" r="0" /><rect x="205" y="102" width="50" height="6" rx="2" class="brass"/>
-<text x="270" y="118" class="stxt">piezo pegado por dentro, justo debajo</text>
-<rect x="150" y="232" width="200" height="28" rx="3" class="bbside"/><text x="250" y="250" class="lbl" text-anchor="middle">protoboard (adhesivo)</text>
-<rect x="170" y="216" width="150" height="10" class="pcbside"/><rect x="168" y="222" width="6" height="12" class="pin"/><rect x="316" y="222" width="6" height="12" class="pin"/>
-<rect x="160" y="214" width="16" height="8" class="usb"/><text x="100" y="206" class="stxt" text-anchor="middle">muesca USB</text>
-<rect x="56" y="212" width="8" height="16" fill="var(--accent)"/>
-<text x="475" y="200" class="stxt">jack: pared izquierda</text><text x="475" y="216" class="lbl">(no se ve en este corte)</text>
-<path d="M218,108 C200,150 200,190 200,214" class="wc w-red" style="stroke-width:2"/>
-<text x="480" y="270" class="lbl">cinta aislante en el fondo</text><text x="480" y="284" class="lbl">y debajo de la tapa</text>
-<line x1="70" y1="268" x2="450" y2="268" class="tape"/><line x1="70" y1="104" x2="450" y2="104" class="tape"/>
+# ---------------- montaje en la lata ----------------
+def panels(items, aria, cols=2, ph=160):
+    """viñetas numeradas de 304 x ph"""
+    rows = (len(items) + cols - 1) // cols
+    out = [f'<svg viewBox="0 0 {cols * 312 - 4} {rows * (ph + 10) - 4}" role="img" aria-label="{aria}">']
+    for k, (title, body) in enumerate(items):
+        x, y = (k % cols) * 312, (k // cols) * (ph + 10)
+        out.append(f'<g transform="translate({x},{y})"><rect x="2" y="2" width="304" height="{ph}" rx="6" fill="var(--soft)" stroke="var(--rule)"/>'
+                   f'<circle cx="20" cy="20" r="11" fill="var(--ink)"/><text x="20" y="24" text-anchor="middle" style="font-size:11px;font-weight:700;fill:var(--paper)">{k + 1}</text>'
+                   f'<text x="38" y="24" class="stxt" style="font-weight:700">{title}</text><g transform="translate(0,22)">{body}</g></g>')
+    out.append('</svg>')
+    return ''.join(out)
+
+def dim(x1, y1, x2, y2, label, lx, ly, anchor='middle'):
+    """cota con topes en los extremos"""
+    if y1 == y2:
+        t = f'<line x1="{x1}" y1="{y1 - 5}" x2="{x1}" y2="{y1 + 5}" class="sline" style="stroke-width:1.4"/><line x1="{x2}" y1="{y2 - 5}" x2="{x2}" y2="{y2 + 5}" class="sline" style="stroke-width:1.4"/>'
+    else:
+        t = f'<line x1="{x1 - 5}" y1="{y1}" x2="{x1 + 5}" y2="{y1}" class="sline" style="stroke-width:1.4"/><line x1="{x2 - 5}" y1="{y2}" x2="{x2 + 5}" y2="{y2}" class="sline" style="stroke-width:1.4"/>'
+    return (f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" style="stroke:var(--accent);stroke-width:1.6"/>{t}'
+            f'<text x="{lx}" y="{ly}" class="hn" text-anchor="{anchor}">{label}</text>')
+
+def fig_plan():
+    return '''<svg viewBox="0 0 620 400" role="img" aria-label="Vista desde arriba de la lata abierta: la protoboard abajo con el USB contra la pared de abajo, el jack a su derecha en la misma pared, el LED cerca de la parte de arriba de la protoboard y una zona libre arriba donde caerá el piezo de la tapa">
+<text x="20" y="20" class="stxt" style="font-weight:700">LA LATA DESDE ARRIBA (fondo)</text>
+<rect x="40" y="34" width="210" height="322" rx="22" class="tin"/>
+<rect x="48" y="42" width="194" height="306" rx="16" fill="var(--paper)" fill-opacity=".35" stroke="var(--rule)"/>
+<line x1="256" y1="80" x2="256" y2="310" style="stroke:var(--muted);stroke-width:5;stroke-dasharray:14 6"/>
+<text x="268" y="380" class="lbl">la línea gruesa de la derecha = bisagra</text>
+<circle cx="145" cy="110" r="47" class="ghost"/><text x="145" y="106" class="lbl" text-anchor="middle" style="fill:#1B1F24">zona libre:</text><text x="145" y="118" class="lbl" text-anchor="middle" style="fill:#1B1F24">aquí cae el piezo</text>
+<rect x="62" y="186" width="122" height="160" rx="3" class="bbside"/>
+<rect x="91" y="226" width="63" height="114" rx="3" class="spm"/>
+<rect x="110" y="336" width="26" height="12" class="usb"/>
+<circle cx="150" cy="204" r="10" class="ledrgb"/>
+<rect x="198" y="300" width="28" height="48" rx="4" class="jackb"/>
+<rect x="105" y="350" width="36" height="9" fill="var(--accent)"/><rect x="200" y="350" width="24" height="9" fill="var(--accent)"/>
+<text x="145" y="392" class="hn" text-anchor="middle" style="font-size:11px">PARED DEL USB Y EL JACK</text>
+<line x1="192" y1="110" x2="290" y2="110" class="sline" style="stroke-width:1"/><text x="296" y="106" class="stxt">④ piezo pegado en la tapa, sobre la zona libre</text><text x="296" y="121" class="lbl">el muelle va por fuera, justo encima</text>
+<line x1="160" y1="204" x2="290" y2="204" class="sline" style="stroke-width:1"/><text x="296" y="200" class="stxt">③ LED: agujero Ø 5 en la tapa (opcional)</text><text x="296" y="215" class="lbl">sin agujero el brillo queda dentro: también vale</text>
+<line x1="184" y1="262" x2="290" y2="262" class="sline" style="stroke-width:1"/><text x="296" y="258" class="stxt">① protoboard pegada al fondo</text><text x="296" y="273" class="lbl">USB a 1–2 mm de la pared</text>
+<line x1="226" y1="322" x2="290" y2="322" class="sline" style="stroke-width:1"/><text x="296" y="318" class="stxt">② jack en la misma pared, al lado</text><text x="296" y="333" class="lbl">que su cuerpo no toque la protoboard</text>
+<text x="296" y="356" class="lbl">naranja = agujeros en la pared</text>
 </svg>'''
+
+def fig_insulate():
+    p1 = ('<rect x="30" y="18" width="244" height="112" rx="14" class="tin"/>'
+          + ''.join(f'<rect x="38" y="{24 + i * 20}" width="228" height="24" fill="#3A3F45" fill-opacity=".85" stroke="var(--ink)" stroke-width=".6"/>' for i in range(5))
+          + '<text x="152" y="138" class="lbl" text-anchor="middle">tiras de cinta aislante (o Kapton) solapadas 3-4 mm</text>')
+    p2 = ('<path d="M30,120 H274" class="sline" style="stroke-width:3"/><path d="M40,30 V120" class="sline" style="stroke-width:3"/>'
+          '<path d="M44,70 V115 H270" style="stroke:#3A3F45;stroke-width:5;fill:none"/>'
+          '<rect x="90" y="84" width="130" height="28" rx="3" class="bbside"/><text x="155" y="102" class="lbl" text-anchor="middle" style="fill:#1B1F24">protoboard</text>'
+          '<rect x="90" y="112" width="130" height="3" fill="#E8E2D0"/>'
+          + dim(56, 70, 56, 115, '1 cm', 60, 96, 'start') +
+          '<text x="44" y="138" class="lbl">pared</text><text x="270" y="138" class="lbl" text-anchor="end">fondo de la lata</text>'
+          '<text x="230" y="82" class="lbl">su adhesivo</text><text x="230" y="94" class="lbl">va ENCIMA</text><text x="230" y="106" class="lbl">de la cinta</text>')
+    return panels([('Cubre todo el fondo', p1), ('Sube 1 cm por las paredes', p2)],
+                  'Dos viñetas: tiras de cinta aislante solapadas cubriendo el fondo; corte lateral con la cinta subiendo un centímetro por la pared y la protoboard pegada encima')
+
+def fig_usb_measure():
+    return '''<svg viewBox="0 0 620 380" role="img" aria-label="La pared del USB vista desde fuera, con cotas: distancia desde el borde izquierdo hasta el centro del USB, altura desde el fondo, tamaño del rectángulo, separación al jack y franja de arriba que no se taladra. Debajo, la variante de muesca abierta si el USB queda demasiado alto">
+<text x="20" y="20" class="stxt" style="font-weight:700">PARED DEL USB VISTA DESDE FUERA (escala ≈ 7:1)</text>
+<rect x="40" y="56" width="420" height="140" rx="6" class="tin"/>
+<rect x="40" y="56" width="420" height="30" fill="var(--accent)" fill-opacity=".18"/><text x="250" y="75" class="lbl" text-anchor="middle" style="fill:var(--ink)">4-5 mm de arriba: aquí encaja la tapa. No taladres aquí</text>
+<rect x="221" y="98" width="70" height="46" rx="3" fill="var(--paper)" stroke="var(--ink)" stroke-width="1.5"/><text x="256" y="125" class="lbl" text-anchor="middle">USB</text>
+<circle cx="256" cy="121" r="2.5" class="sdot"/>
+<circle cx="400" cy="138" r="21" fill="var(--paper)" stroke="var(--ink)" stroke-width="1.5"/><circle cx="400" cy="138" r="2.5" class="sdot"/><text x="400" y="110" class="lbl" text-anchor="middle" style="fill:#1B1F24">jack Ø 6</text>
+''' + dim(40, 216, 256, 216, 'X = borde → centro USB', 148, 232) + dim(476, 121, 476, 196, 'Y', 482, 162, 'start') + \
+    dim(221, 90, 291, 90, '', 0, 0) + '<text x="256" y="52" class="hn" text-anchor="middle">ancho = clavija + 2 mm</text>' + \
+    dim(205, 98, 205, 144, 'alto', 200, 125, 'end') + dim(256, 250, 400, 250, '≥ 14 mm entre centros', 328, 266) + \
+    dim(400, 196, 400, 158, '', 0, 0) + '<text x="408" y="186" class="hn">Y jack ≈ 8-10</text>' + \
+    '''<text x="500" y="110" class="stxt">Y = del fondo de</text><text x="500" y="124" class="stxt">la lata al centro</text><text x="500" y="138" class="stxt">del conector, con</text><text x="500" y="152" class="stxt">la placa ya puesta</text><text x="500" y="166" class="stxt">sobre la cinta</text>
+<text x="20" y="298" class="stxt" style="font-weight:700">¿EL RECTÁNGULO SE METE EN LA FRANJA?</text>
+<text x="20" y="316" class="lbl">Entonces haz una muesca abierta por arriba</text><text x="20" y="330" class="lbl">y otra igual en el borde de la tapa:</text><text x="20" y="344" class="lbl">al cerrar, las dos forman el agujero.</text>
+<path d="M310,290 H372 V330 H408 V290 H470 V350 H310 Z" class="tin"/><text x="390" y="366" class="lbl" text-anchor="middle">muesca en la pared</text>
+<path d="M490,300 H536 V316 H572 V300 H612" class="sline"/><text x="552" y="334" class="lbl" text-anchor="middle">muesca en la tapa</text>
+</svg>'''
+
+def fig_marks():
+    p1 = ('<path d="M30,128 H274" class="sline" style="stroke-width:3"/>'
+          '<rect x="60" y="92" width="180" height="34" rx="3" class="bbside"/>'
+          '<line x1="146" y1="92" x2="146" y2="70" class="leg"/><line x1="154" y1="92" x2="154" y2="70" class="leg"/>'
+          '<path d="M138,72 V56 a12,12 0 0 1 24,0 V72 Z" class="ledrgb"/>'
+          '<ellipse cx="150" cy="38" rx="14" ry="8" fill="#5BA4E6" stroke="var(--ink)"/><text x="174" y="38" class="lbl">bolita de Blu-Tack</text>'
+          '<path d="M30,22 H274" class="sline" style="stroke-dasharray:6 4"/><text x="270" y="16" class="lbl" text-anchor="end">la tapa baja aquí</text>')
+    p2 = ('<rect x="40" y="14" width="224" height="120" rx="14" class="tin"/>'
+          '<ellipse cx="160" cy="62" rx="10" ry="5" fill="#5BA4E6" fill-opacity=".7"/>'
+          '<circle cx="160" cy="62" r="13" fill="none" style="stroke:var(--accent);stroke-width:2;stroke-dasharray:3 3"/>'
+          '<line x1="148" y1="62" x2="172" y2="62" style="stroke:var(--accent)"/><line x1="160" y1="50" x2="160" y2="74" style="stroke:var(--accent)"/>'
+          '<text x="160" y="96" class="lbl" text-anchor="middle">la marca en la tapa = centro</text><text x="160" y="108" class="lbl" text-anchor="middle">del agujero de Ø 5 mm</text>'
+          '<text x="52" y="128" class="lbl">tapa por dentro</text>')
+    return panels([('Blu-Tack encima del LED', p1), ('Cierra, abre y marca', p2)],
+                  'Dos viñetas: una bolita de Blu-Tack sobre la cúpula del LED; al cerrar y abrir la tapa queda una marca que indica el centro del agujero')
+
+def fig_drill():
+    tape = '<rect x="40" y="40" width="224" height="60" fill="#E8D9A8" stroke="#A8945A"/>'
+    p1 = ('<rect x="30" y="30" width="244" height="80" rx="6" class="tin"/>' + tape +
+          '<path d="M90,60 l10,10 m0,-10 l-10,10 M220,62 l10,10 m0,-10 l-10,10" class="sline"/>'
+          '<text x="152" y="128" class="lbl" text-anchor="middle">cinta de carrocero + cruces con rotulador</text>')
+    p2 = ('<path d="M60,20 V130" class="sline" style="stroke-width:3"/><text x="56" y="140" class="lbl" text-anchor="middle">pared</text>'
+          '<rect x="64" y="30" width="90" height="90" fill="#D8B27A" stroke="#7A5A2A"/><text x="109" y="80" class="lbl" text-anchor="middle" style="fill:#1B1F24">taco</text><text x="109" y="92" class="lbl" text-anchor="middle" style="fill:#1B1F24">de madera</text>'
+          '<path d="M20,40 H40 V110 H20 M154,40 H200 V110 H154" style="stroke:var(--muted);stroke-width:5;fill:none"/><text x="220" y="64" class="lbl">sargento</text><text x="220" y="78" class="lbl">(o tornillo de</text><text x="220" y="92" class="lbl">banco)</text>'
+          '<text x="14" y="30" class="lbl">fuera</text>')
+    p3 = ('<rect x="30" y="80" width="244" height="12" class="tin"/>'
+          '<path d="M80,78 l-8,-50 h16 Z" fill="#8A939A" stroke="var(--ink)"/><text x="96" y="40" class="lbl">punzón:</text><text x="96" y="52" class="lbl">toque suave</text>'
+          '<path d="M220,78 v-44" style="stroke:#8A939A;stroke-width:4"/><text x="230" y="52" class="lbl">broca</text><text x="230" y="64" class="lbl">2 mm</text>'
+          '<text x="152" y="118" class="lbl" text-anchor="middle">Dremel a velocidad media, sin apretar</text><text x="152" y="130" class="lbl" text-anchor="middle">deja que la broca trabaje</text>')
+    p4 = ('<rect x="30" y="20" width="244" height="100" rx="6" class="tin"/>'
+          '<circle cx="90" cy="70" r="6" fill="var(--paper)" stroke="var(--ink)"/><text x="90" y="104" class="lbl" text-anchor="middle">2 mm</text>'
+          '<circle cx="152" cy="70" r="12" fill="var(--paper)" stroke="var(--ink)"/><text x="152" y="104" class="lbl" text-anchor="middle">4 mm</text>'
+          '<circle cx="220" cy="70" r="18" fill="var(--paper)" stroke="var(--ink)"/><text x="220" y="104" class="lbl" text-anchor="middle">6 mm jack</text>'
+          '<path d="M108,70 h20 M172,70 h20" class="sline" style="stroke-width:1.4"/>'
+          '<text x="152" y="132" class="lbl" text-anchor="middle">LED en la tapa: hasta 5 mm</text>')
+    return panels([('Marca sobre cinta de carrocero', p1), ('Apoya la pared por dentro', p2),
+                   ('Punzón y broca fina', p3), ('Agranda poco a poco', p4)],
+                  'Cuatro viñetas: marcar sobre cinta de carrocero, apoyar la pared con un taco de madera y un sargento, punzón y broca de 2 mm, y agrandar a 4 y 6 mm')
+
+def fig_usb_cut():
+    R = '<rect x="102" y="40" width="100" height="60" fill="none" style="stroke:var(--accent);stroke-width:1.6;stroke-dasharray:5 3"/>'
+    base = '<rect x="30" y="20" width="244" height="100" rx="6" class="tin"/>'
+    holes = ''.join(f'<circle cx="{x}" cy="{y}" r="6" fill="var(--paper)" stroke="var(--ink)"/>' for x, y in ((110, 48), (194, 48), (110, 92), (194, 92)))
+    p1 = base + R + '<text x="152" y="134" class="lbl" text-anchor="middle">rectángulo dibujado con las medidas X, Y</text>'
+    p2 = base + R + holes + '<text x="152" y="134" class="lbl" text-anchor="middle">4 agujeros de 2-3 mm por DENTRO de las esquinas</text>'
+    p3 = (base + R + holes + '<path d="M116,48 H188 M116,92 H188 M110,54 V86 M194,54 V86" style="stroke:var(--ink);stroke-width:5"/>'
+           '<text x="152" y="134" class="lbl" text-anchor="middle">une con el disco de corte o con más agujeros</text>')
+    p4 = (base + '<rect x="102" y="40" width="100" height="60" fill="var(--paper)" stroke="var(--ink)" stroke-width="1.5"/>'
+          '<path d="M200,30 l40,-14" style="stroke:#8A939A;stroke-width:6;stroke-linecap:round"/><text x="244" y="30" class="lbl">lima</text>'
+          '<text x="152" y="74" class="lbl" text-anchor="middle">prueba la clavija</text><text x="152" y="134" class="lbl" text-anchor="middle">cuadra con lima de aguja, poco a poco</text>')
+    return panels([('Dibuja el rectángulo', p1), ('Agujero en cada esquina', p2), ('Une los agujeros', p3), ('Lima hasta que entre la clavija', p4)],
+                  'Cuatro viñetas para el agujero del USB: dibujar el rectángulo, taladrar un agujero en cada esquina, unirlos con el disco de corte y limar hasta que entre la clavija')
+
+def fig_lid():
+    return '''<svg viewBox="0 0 620 260" role="img" aria-label="Corte de la tapa: por fuera el muelle pegado con epoxi; por dentro, justo debajo, el piezo con el latón pegado al metal y una tira de cinta tapando la cara blanca y la soldadura del cable rojo">
+<text x="20" y="20" class="stxt" style="font-weight:700">TAPA EN CORTE (cerrada, vista de lado)</text>
+<rect x="40" y="120" width="440" height="10" class="tin"/><text x="40" y="112" class="lbl">metal de la tapa</text>
+<path d="M260,118 v-12 q14,-8 0,-14 q-14,-6 0,-14 q14,-8 0,-14 q-14,-6 0,-14 q14,-8 0,-14" class="spring"/>
+<rect x="244" y="110" width="32" height="8" rx="2" fill="#B9B08C" stroke="var(--ink)"/><text x="290" y="48" class="stxt">muelle POR FUERA</text><text x="290" y="64" class="lbl">base pegada con epoxi, justo encima del piezo</text>
+<rect x="200" y="131" width="120" height="5" class="brass"/><rect x="226" y="136" width="68" height="5" class="ceramic"/>
+<rect x="196" y="141" width="128" height="6" fill="#3A3F45"/>
+<path d="M250,147 C250,180 200,190 160,200" class="wc w-red" style="stroke-width:2"/><path d="M205,136 C190,170 170,190 150,206" class="wc w-black" style="stroke-width:2"/>
+<text x="330" y="138" class="lbl">① latón pegado al metal con pegamento instantáneo</text>
+<text x="330" y="152" class="lbl">② cinta encima de la cara blanca y la soldadura roja</text>
+<text x="40" y="222" class="lbl">cables con holgura hacia la bisagra:</text><text x="40" y="236" class="lbl">que la tapa abra del todo sin tirar de ellos</text>
+<text x="330" y="196" class="stxt">El latón es GND, igual que la lata:</text><text x="330" y="212" class="stxt">pueden tocarse. La cara blanca NO.</text>
+</svg>'''
+
+def fig_mount():
+    p1 = ('<path d="M150,14 V136" class="sline" style="stroke-width:3"/><text x="150" y="150" class="lbl" text-anchor="middle">pared</text>'
+          '<rect x="70" y="56" width="76" height="40" rx="4" class="jackb"/><text x="108" y="50" class="lbl" text-anchor="middle">dentro</text>'
+          '<rect x="146" y="68" width="40" height="16" fill="#B8C0C8" stroke="var(--ink)"/>'
+          '<rect x="158" y="58" width="10" height="36" rx="2" fill="#8A939A" stroke="var(--ink)"/><text x="196" y="50" class="lbl">fuera:</text><text x="196" y="64" class="lbl">tuerca</text>')
+    p2 = ('<path d="M270,14 V136" class="sline" style="stroke-width:3"/><path d="M30,130 H270" class="sline" style="stroke-width:3"/>'
+          '<rect x="90" y="96" width="160" height="30" rx="3" class="bbside"/><rect x="120" y="86" width="110" height="10" class="pcbside"/>'
+          '<rect x="226" y="86" width="22" height="10" class="usb"/>'
+          '<path d="M180,72 l40,0 m-10,-8 l10,8 l-10,8" class="sline"/><text x="100" y="22" class="lbl">1º desliza hacia la pared</text><text x="100" y="34" class="lbl">hasta que el USB quede</text><text x="100" y="46" class="lbl">frente al agujero</text>'
+          '<path d="M60,78 v14 m-6,-6 l6,6 l6,-6" class="sline"/><text x="34" y="74" class="lbl">2º aprieta</text>')
+    p3 = ('<path d="M150,14 V96" class="sline" style="stroke-width:3"/>'
+          '<rect x="60" y="62" width="90" height="16" class="pcbside"/><rect x="128" y="60" width="20" height="20" class="usb"/>'
+          '<rect x="152" y="62" width="14" height="16" fill="#8A939A"/><rect x="166" y="58" width="60" height="24" rx="4" fill="#2A2A2A"/><path d="M226,70 H290" style="stroke:#2A2A2A;stroke-width:6"/>'
+          '<text x="152" y="114" class="lbl" text-anchor="middle">la clavija entra sin forzar y</text><text x="152" y="126" class="lbl" text-anchor="middle">la placa no se mueve al enchufar</text>')
+    p4 = ('<rect x="30" y="40" width="110" height="80" rx="8" class="tin"/><text x="85" y="134" class="lbl" text-anchor="middle">fondo</text>'
+          '<rect x="164" y="40" width="110" height="80" rx="8" class="tin"/><text x="219" y="134" class="lbl" text-anchor="middle">tapa</text>'
+          '<circle cx="219" cy="80" r="18" class="brass"/>'
+          '<path d="M201,80 C170,80 172,40 152,40 C132,40 150,90 110,96" class="wc w-red" style="stroke-width:2;fill:none"/>'
+          '<text x="152" y="22" class="lbl" text-anchor="middle">bucle de holgura</text>')
+    return panels([('Atornilla el jack', p1), ('Pega la protoboard', p2), ('Prueba el USB', p3), ('Cables del piezo con holgura', p4)],
+                  'Cuatro viñetas: atornillar el jack con la tuerca por fuera, deslizar la protoboard hacia la pared y pegarla, probar que la clavija USB entra sin mover la placa y dejar un bucle de holgura en los cables del piezo')
+
+def fig_short():
+    tin = '<rect x="40" y="30" width="120" height="96" rx="10" class="tin"/><rect x="70" y="60" width="56" height="50" class="bbside"/>'
+    p1 = (tin + '<circle cx="48" cy="80" r="4" fill="var(--paper)" stroke="var(--ink)"/>'
+          + probe((48, 80), 'black', 'lata', -22, 28) + probe((98, 72), 'red', 'J4', 30, -34) + meter(168, 40, 'OL', 'silencio ✔'))
+    p2 = (tin + '<circle cx="48" cy="80" r="4" fill="var(--paper)" stroke="var(--ink)"/>'
+          + probe((48, 80), 'black', 'lata', -22, 28) + probe((98, 72), 'red', 'J2', 30, -34) + meter(168, 40, '♪ 000', 'pita ✔'))
+    return panels([('Lata ↔ J4 (5 V): NO pita', p1), ('Lata ↔ J2 (GND): pita', p2)],
+                  'Dos viñetas con el multímetro en continuidad: entre la lata y J4 no debe pitar; entre la lata y J2 sí pita, por el jack')
 
 # ---------------- pasos ----------------
 def steps():
@@ -478,16 +634,53 @@ def steps():
         '<p>Salen líneas como <code>golpe 180  vel 63</code>. Si dispara sin tocarlo, sube <code>THRESHOLD</code>; si los golpes suaves no suenan, bájalo.</p>')
 
     s.append('<li class="phase">Dentro de la caja</li>')
-    add('Prepara la caja',
-        'Con la tapa abierta: marca dónde queda el USB de la placa y lima una muesca en esa pared (unos 12 × 8 mm). En la pared izquierda (el lado de las columnas A-E, adonde llegan los cables del jack), haz un agujero de 6 mm para el jack. Lima las rebabas y cubre el fondo y el interior de la tapa con cinta aislante.',
-        [('', 'muesca USB 12×8 mm'), ('', 'jack Ø 6 mm'), ('', 'cinta aislante')],
-        fig(fig_tin(), 'La caja es de metal: la cinta evita que una patilla toque la lata. El manguito del jack sí puede tocarla (es GND).'))
-
-    add('Piezo, muelle y cierre',
-        'Pega el piezo por dentro de la tapa con pegamento instantáneo o cinta de doble cara fina (la silicona caliente amortigua el golpe). Por fuera, justo encima, pega la base del muelle con epoxi. Pega la protoboard al fondo con su adhesivo, pasa el USB por la muesca, atornilla el jack y cierra con cuidado de no pellizcar los cables del piezo.',
-        [('red', 'piezo en la tapa'), ('', 'muelle encima, por fuera')],
-        warn('<b>Antes de cerrar:</b> comprueba que nada aprieta la Pro Micro contra la tapa. Si el LED queda alto, haz un agujero de 5 mm en la tapa justo encima para que se vea la luz.'))
+    add('Decide dónde va cada cosa',
+        'Pon la protoboard (todavía sin pegar) en el fondo con el USB mirando a una de las paredes cortas, y que <b>no sea</b> la de la bisagra. El jack va en esa misma pared, a la derecha de la protoboard. Arriba queda una zona libre: ahí caerá el piezo cuando cierres la tapa.',
+        [('', 'USB + jack: la misma pared'), ('', 'piezo: zona libre')],
+        fig(fig_plan(), 'Así sale todo el cableado por un solo lado. El piezo no puede caer encima de la placa ni del LED: la tapa los aplastaría al cerrar.'))
+    add('Aísla el fondo',
+        'La lata es de metal y conduce: si una patilla la toca, hay cortocircuito. Cubre <b>todo</b> el fondo con tiras de cinta aislante (o Kapton) solapadas y súbelas 1 cm por las paredes cercanas a la protoboard. Hazlo ahora, antes de medir: la cinta levanta un poco la placa y cambia la altura del USB.',
+        [('', 'cinta aislante'), ('', 'tiras solapadas')],
+        fig(fig_insulate(), 'Una cartulina o un trozo de plástico de blíster recortado a medida también sirve, encima o en lugar de la cinta.'))
+    add('Mide el agujero del USB y el del jack',
+        'Pon la protoboard sobre la cinta, con el USB a 1-2 mm de la pared. Con una regla o un calibre mide <b>X</b> (del borde exterior izquierdo de la pared al centro del conector) e <b>Y</b> (del fondo al centro del conector). El tamaño lo da la parte de plástico de la clavija de tu cable: mídela y suma 1 mm por cada lado (suele salir unos 12 × 8 mm). El jack va a la derecha, con su centro a unos 8-10 mm del fondo y donde su cuerpo no toque la protoboard. Su agujero es del diámetro de la rosca (normalmente 6 mm). Apunta todas las medidas.',
+        [('', 'X · Y del USB'), ('', 'clavija + 2 mm'), ('', 'jack Ø rosca')],
+        fig(fig_usb_measure(), 'La pared es muy fina: medir por dentro o por fuera da igual. Deja al menos 10 mm entre el jack y la esquina para que la tuerca apoye en plano.'))
+    add('Marca el LED y el piezo en la tapa',
+        'Pon una bolita de Blu-Tack encima del LED, cierra la tapa con suavidad y ábrela: la marca que queda en la tapa es el centro del agujero de 5 mm. Haz lo mismo con una bolita grande en el centro de la zona libre: esa marca es donde irá el centro del piezo (y el muelle encima, por fuera). El agujero del LED es opcional: sin él, la luz se queda dentro.',
+        [('', 'Blu-Tack'), ('', 'LED Ø 5 mm (opcional)')],
+        fig(fig_marks(), 'La tapa se cierra dando la vuelta: por eso es mejor marcar así que medir, porque el lado izquierdo y el derecho se invierten.'))
+    add('Vacía la lata y taladra los agujeros redondos',
+        'Saca <b>toda</b> la electrónica: las virutas de metal en la protoboard dan cortocircuitos. Ponte gafas. Pega cinta de carrocero en la zona, pasa a ella las medidas y marca los centros con una cruz. Apoya la pared por dentro con un taco de madera sujeto con un sargento (la chapa se dobla con nada). Un toque suave de punzón, broca de 2 mm a velocidad media, y agranda a 4 y 6 mm para el jack (5 mm para el LED en la tapa). Una broca escalonada va de lujo.',
+        [('', 'gafas'), ('', 'cinta de carrocero'), ('', '2 → 4 → 6 mm')],
+        fig(fig_drill(), 'Sin el taco de madera la broca abolla la pared en lugar de cortarla.') +
+        warn('<b>Cuidado:</b> los bordes recién cortados de la lata cortan como una cuchilla. Usa guantes al limar y no pases el dedo por el agujero.'))
+    add('Recorta el agujero del USB',
+        'Dibuja el rectángulo con tus medidas. Taladra un agujero de 2-3 mm en cada esquina, por dentro del rectángulo. Únelos con el disco de corte de la Dremel o con más agujeros seguidos, y cuadra con una lima de aguja. Prueba la clavija a menudo: es mejor quedarse corto y seguir limando que pasarse. Si el rectángulo se mete en la franja de arriba, hazlo como muesca abierta y lima otra igual en el borde de la tapa.',
+        [('', 'disco de corte'), ('', 'lima de aguja')],
+        fig(fig_usb_cut(), 'Con el disco de corte, gafas siempre: si el disco se rompe, salta.'))
+    add('Quita rebabas y limpia',
+        'Lima las rebabas por dentro y por fuera de cada agujero (o pasa la lija de tambor de la Dremel) hasta que el borde no corte al tocarlo con cuidado. Recoge las virutas con un imán envuelto en cinta, lava la lata con agua y jabón y sécala del todo. Si la cinta del fondo se ha llenado de virutas, cámbiala.',
+        [('', 'sin rebabas'), ('', 'sin virutas')])
+    add('Tapa: piezo por dentro, muelle por fuera',
+        'En la marca del piezo, pega el disco con el <b>latón contra el metal</b>, con unas gotas de pegamento instantáneo (la silicona caliente amortigua el golpe y suena menos). Tapa con cinta aislante la cara blanca y la soldadura del cable rojo. Por fuera, justo encima, pega la base del muelle con epoxi y deja que endurezca el tiempo que diga el envase.',
+        [('', 'latón contra la tapa'), ('', 'cinta en la cara blanca'), ('', 'muelle con epoxi')],
+        fig(fig_lid(), 'El latón del piezo y la lata son los dos GND, así que pueden tocarse. La cara blanca es la señal: si toca el metal, el piezo deja de funcionar.'))
+    add('Monta todo dentro',
+        'Pasa el jack desde dentro y aprieta la tuerca por fuera. Quita el papel del adhesivo de la protoboard, deslízala hasta que el USB quede frente a su agujero y aprieta contra el fondo. Prueba a enchufar el cable: tiene que entrar sin forzar y la placa no se debe mover. Deja un bucle de holgura en los cables del piezo hacia la bisagra.',
+        [('', 'tuerca por fuera'), ('', 'USB frente al agujero'), ('red', 'holgura en el piezo')],
+        fig(fig_mount(), 'Si la placa se mueve al enchufar, pon un taco de espuma o cinta de doble cara gruesa detrás de la protoboard, en el lado contrario a la pared.'))
+    add('Comprueba que no hay cortos',
+        'Sin el USB conectado, multímetro en continuidad. Toca la lata en un punto sin pintura (el borde de un agujero sirve) y J4: <b>no debe pitar</b>. Luego lata y J2: <b>sí pita</b>, porque el jack une la lata con GND.',
+        [('', 'lata ↔ J4: silencio'), ('', 'lata ↔ J2: pita')],
+        fig(fig_short(), 'Si lata y J4 pitan, no conectes el USB: algo de 5 V toca el metal. Busca una patilla o un cable pelado contra la pared o la tapa.'))
+    add('Cierra y prueba',
+        'Cierra la tapa despacio, mirando que nada empuje la Pro Micro ni el LED. Conecta el USB: el LED hace rojo, verde, azul. Golpea el muelle y escucha. Dentro de la lata el golpe llega distinto: abre el monitor serie y ajusta <code>THRESHOLD</code> y <code>PEAK_FOR_MAX</code> si hace falta.',
+        [('', 'rojo · verde · azul'), ('', 'boing por el jack')],
+        '<pre><code>arduino-cli monitor -p /dev/cu.usbmodem2101 -c baudrate=115200</code></pre>'
+        '<p>Si al mover la caja o golpear la mesa salen golpes que no has dado, sube <code>THRESHOLD</code>. Si los golpes fuertes no llegan al máximo, baja <code>PEAK_FOR_MAX</code>.</p>')
     return ''.join(s)
+
 
 def hole_table():
     rows = [('Cable negro (debajo)', 'F2 → F16', 'GND a la fila 16 derecha'),
@@ -632,8 +825,8 @@ def main():
          '<li>Pro Micro (5 V) y protoboard de 170 puntos</li><li>Piezo de disco y un muelle</li>'
          '<li>Jack hembra 3,5 mm con sus 3 cables</li><li>LED RGB de 4 patas</li>'
          '<li>Tres resistencias: 10 kΩ, 2,2 MΩ y 220 Ω</li><li>Cable rígido negro, verde, rojo y morado; termorretráctil</li>'
-         '<li>Caja metálica, cinta aislante, pegamento instantáneo y epoxi</li>'
-         '<li>Herramientas: pelacables, soldador, multímetro, lima, taladro o punzón</li></ul>'
+         '<li>Caja metálica, cinta aislante (o Kapton), cinta de carrocero, Blu-Tack, pegamento instantáneo y epoxi</li>'
+         '<li>Herramientas: pelacables, soldador, multímetro, Dremel con brocas de 2, 4 y 6 mm (o escalonada) y disco de corte, punzón, limas de aguja, sargento y taco de madera, gafas y guantes</li></ul>'
          + fig(fig_res(), 'La banda dorada (tolerancia) va siempre a la derecha cuando lees los colores.') + '</section>',
          '<section><h2>Así queda la protoboard</h2>' + fig(final, 'Todo montado. Las líneas discontinuas son los tres cables que van por debajo de la Pro Micro.') + hole_table() + '</section>',
          '<section><h2>Montaje</h2><ol class="steps">' + steps() + '</ol></section>',
